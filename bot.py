@@ -14,8 +14,14 @@ from urllib.parse import quote
 import feedparser
 import requests
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+def _clean_secret(value: str) -> str:
+    """Убирает случайные пробелы/кавычки, которые иногда попадают при
+    вставке значения в GitHub Secrets."""
+    return value.strip().strip('"').strip("'")
+
+
+TELEGRAM_TOKEN = _clean_secret(os.environ["TELEGRAM_BOT_TOKEN"])
+CHAT_ID = _clean_secret(os.environ["TELEGRAM_CHAT_ID"])
 
 STATE_FILE = "seen_links.json"
 MAX_STATE_ITEMS = 3000           # сколько ссылок храним в истории
@@ -76,10 +82,10 @@ def fetch_news(query: str):
     return feed.entries[:ENTRIES_PER_QUERY]
 
 
-def send_telegram(text: str) -> None:
+def send_telegram(text: str) -> bool:
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(
+        resp = requests.post(
             url,
             json={
                 "chat_id": CHAT_ID,
@@ -89,8 +95,14 @@ def send_telegram(text: str) -> None:
             },
             timeout=15,
         )
+        data = resp.json()
+        if not data.get("ok"):
+            print(f"Telegram API вернул ошибку: {data}")
+            return False
+        return True
     except requests.RequestException as e:
-        print(f"Ошибка отправки в Telegram: {e}")
+        print(f"Сетевая ошибка при отправке в Telegram: {e}")
+        return False
 
 
 def get_source_name(entry) -> str:
@@ -131,12 +143,19 @@ def main():
     save_seen(new_seen)
 
     if first_run:
-        send_telegram(
+        ok = send_telegram(
             "🤖 Бот запущен и настроен.\n"
             "С этого момента я буду присылать важные новости по вашим секторам "
             "каждые ~10 минут."
         )
-        print("Первый запуск: история новостей сохранена, уведомления не отправлялись.")
+        print("Первый запуск: история новостей сохранена.")
+        if not ok:
+            raise SystemExit(
+                "Не удалось отправить сообщение в Telegram. Проверьте секреты "
+                "TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в настройках репозитория "
+                "(Settings → Secrets and variables → Actions) — смотрите подробности "
+                "ошибки выше в логах."
+            )
     else:
         print(f"Отправлено новостей: {sent_count}")
 
