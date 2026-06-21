@@ -9,6 +9,7 @@
 import os
 import json
 import time
+import calendar
 from urllib.parse import quote
 
 import feedparser
@@ -23,9 +24,23 @@ def _clean_secret(value: str) -> str:
 TELEGRAM_TOKEN = _clean_secret(os.environ["TELEGRAM_BOT_TOKEN"])
 CHAT_ID = _clean_secret(os.environ["TELEGRAM_CHAT_ID"])
 
+if not TELEGRAM_TOKEN or ":" not in TELEGRAM_TOKEN:
+    raise SystemExit(
+        "Секрет TELEGRAM_BOT_TOKEN пустой или имеет неверный формат "
+        "(должен выглядеть как '123456789:AA...'). Проверьте значение в "
+        "Settings → Secrets and variables → Actions."
+    )
+
+if not CHAT_ID:
+    raise SystemExit(
+        "Секрет TELEGRAM_CHAT_ID пустой. Проверьте значение в "
+        "Settings → Secrets and variables → Actions."
+    )
+
 STATE_FILE = "seen_links.json"
 MAX_STATE_ITEMS = 3000           # сколько ссылок храним в истории
 ENTRIES_PER_QUERY = 15           # сколько свежих новостей смотрим за раз на каждый сектор
+MAX_AGE_HOURS = 3                # игнорировать новости старше этого числа часов
 
 # ---------------------------------------------------------------------------
 # 1. СЕКТОРА И ПОИСКОВЫЕ ЗАПРОСЫ
@@ -112,6 +127,16 @@ def get_source_name(entry) -> str:
         return ""
 
 
+def is_recent(entry) -> bool:
+    """True, если новость опубликована не позже MAX_AGE_HOURS часов назад."""
+    parsed = getattr(entry, "published_parsed", None)
+    if parsed is None:
+        return True  # нет даты — пропускаем фильтр, лучше показать, чем потерять
+    published_ts = calendar.timegm(parsed)  # epoch в UTC
+    age_hours = (time.time() - published_ts) / 3600
+    return age_hours <= MAX_AGE_HOURS
+
+
 def main():
     first_run = not os.path.exists(STATE_FILE)
     seen = load_seen()
@@ -131,6 +156,9 @@ def main():
             if first_run:
                 # В первый запуск просто запоминаем текущие новости,
                 # чтобы не вывалить вам сразу сотню сообщений.
+                continue
+
+            if not is_recent(entry):
                 continue
 
             if is_important(title):
