@@ -2,34 +2,36 @@ name: Stock News Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'   # каждые 10 минут
   workflow_dispatch:
 
 jobs:
   check-news:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install deps
         run: pip install -r requirements.txt
 
       - name: Run bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
         run: python bot.py
 
-      - name: Save state (seen news)
+      - name: Save state
         run: |
-          git config user.name "news-bot"
+          git config user.name  "news-bot"
           git config user.email "news-bot@users.noreply.github.com"
+          git pull --rebase
           git add seen_links.json
-          git diff --staged --quiet || git commit -m "update seen news state"
+          git diff --staged --quiet || git commit -m "state: seen links"
           git push
