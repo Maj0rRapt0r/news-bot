@@ -1,0 +1,36 @@
+name: Telegram Commands Handler
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'    # каждые 5 минут
+  workflow_dispatch:
+
+jobs:
+  handle-commands:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Handle commands
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python commands.py
+
+      - name: Save config & offset
+        run: |
+          git config user.name  "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git pull --rebase
+          git add config.json tg_offset.json
+          git diff --staged --quiet || git commit -m "config: sector update"
+          git push
